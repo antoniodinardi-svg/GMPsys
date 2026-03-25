@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GMP-ArchiveSys | Cloud Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .required::after { content: " *"; color: red; }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast { animation: slideIn 0.3s ease-out forwards; }
+        
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed; inset: 0; background: rgba(255,255,255,0.9); 
+            z-index: 100; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center;
+            transition: opacity 0.5s ease-out;
+        }
+        #loading-overlay.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden">
+    <!-- Loading Screen -->
+    <div id="loading-overlay">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mb-4"></div>
+        <h2 class="text-xl font-bold text-slate-700">Connessione al Cloud...</h2>
+        <p class="text-slate-500 text-sm" id="loading-text">Inizializzazione...</p>
+        <!-- Pulsante di emergenza se si blocca -->
+        <button onclick="app.checkCompletion(true)" class="mt-8 text-xs text-slate-400 underline hover:text-slate-600 cursor-pointer z-50">
+            Forza avvio (se bloccato)
+        </button>
+    </div>
+
+    <!-- ================= LOGIN SCREEN ================= -->
+    <div id="login-screen" class="fixed inset-0 z-50 bg-slate-200 flex items-center justify-center hidden">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border-t-4 border-blue-600">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-blue-800">GMP-ArchiveSys</h1>
+                <p class="text-slate-500 text-sm mt-2">Cloud Edition (Firebase)</p>
+            </div>
+            
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">ID Utente</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fas fa-user"></i></span>
+                        <input type="text" id="login-username" class="w-full pl-10 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="Es. ADMIN" required>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400"><i class="fas fa-lock"></i></span>
+                        <input type="password" id="login-password" class="w-full pl-10 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="********" required>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-lg shadow-md transition transform active:scale-95">
+                    ACCEDI AL SISTEMA
+                </button>
+            </form>
+            
+            <div class="mt-6 p-4 bg-blue-50 rounded text-xs text-blue-800">
+                <p class="font-bold mb-1">Credenziali Default (Seeding):</p>
+                <ul class="list-disc ml-4 space-y-1">
+                    <li>Admin: <code>ADMIN</code> / <code>password123</code></li>
+                    <li>Supervisore: <code>SUP</code> / <code>password123</code></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MAIN APP LAYOUT ================= -->
+    <div id="app-layout" class="flex h-screen hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20">
+            <div class="p-6 border-b border-slate-700">
+                <div class="text-xl font-bold tracking-tight">GMP-ArchiveSys</div>
+                <div class="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div> Cloud Connected
+                </div>
+            </div>
+            <nav class="flex-1 py-6 space-y-1 px-3">
+                <button onclick="app.nav('dashboard')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white">
+                    <i class="fas fa-chart-line w-5"></i> Dashboard
+                </button>
+                <button onclick="app.nav('archive')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white">
+                    <i class="fas fa-box-archive w-5"></i> Archivio Fisico
+                </button>
+                <button onclick="app.nav('batch-records')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white">
+                    <i class="fas fa-file-medical w-5"></i> Batch Records
+                </button>
+                <button onclick="app.nav('loans')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white">
+                    <i class="fas fa-hand-holding w-5"></i> Prestiti <span id="badge-loans" class="hidden bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-auto">0</span>
+                </button>
+                <div class="border-t border-slate-700 my-2"></div>
+                <button id="nav-products" onclick="app.nav('products')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white hidden restricted-nav" data-roles="Supervisore,Amministratore">
+                    <i class="fas fa-boxes w-5"></i> Anagrafica Prodotti
+                </button>
+                <button id="nav-security" onclick="app.nav('security')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white hidden restricted-nav" data-roles="Amministratore">
+                    <i class="fas fa-shield-alt w-5"></i> Sicurezza & Policy
+                </button>
+                <button id="nav-users" onclick="app.nav('users')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white hidden">
+                    <i class="fas fa-users-cog w-5"></i> Gestione Utenti
+                </button>
+                <button id="nav-audit" onclick="app.nav('audit')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition flex items-center gap-3 text-slate-300 hover:text-white hidden">
+                    <i class="fas fa-clipboard-list w-5"></i> Audit Trail
+                </button>
+            </nav>
+            <div class="p-4 bg-slate-800 border-t border-slate-700">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-lg" id="user-avatar">U</div>
+                    <div class="overflow-hidden">
+                        <div class="text-sm font-bold truncate" id="user-name">User Name</div>
+                        <div class="text-xs text-slate-400 truncate" id="user-role">Role</div>
+                    </div>
+                </div>
+                <button onclick="app.logout()" class="w-full bg-red-600/20 hover:bg-red-600 text-red-200 hover:text-white text-sm py-2 rounded border border-red-600/30 transition">
+                    <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 bg-slate-100 overflow-hidden flex flex-col relative">
+            <!-- Header -->
+            <header class="bg-white h-16 shadow-sm flex items-center justify-between px-8 z-10">
+                <h2 id="page-title" class="text-xl font-bold text-slate-800">Dashboard</h2>
+                <div class="text-sm text-slate-500">
+                    GMP-ArchiveSys Cloud | <span id="system-time"></span>
+                </div>
+            </header>
+
+            <!-- Views Container -->
+            <div id="views-container" class="flex-1 overflow-y-auto p-8 relative">
+                
+                <!-- DASHBOARD -->
+                <div id="view-dashboard" class="view-section space-y-6">
+                     <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
+                            <div class="text-slate-500 text-sm font-medium uppercase">Batch Record Totali</div>
+                            <div class="text-3xl font-bold text-slate-800 mt-2" id="dash-total-br">0</div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
+                            <div class="text-slate-500 text-sm font-medium uppercase">Archiviati</div>
+                            <div class="text-3xl font-bold text-slate-800 mt-2" id="dash-archived-br">0</div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-yellow-500">
+                            <div class="text-slate-500 text-sm font-medium uppercase">In Prestito</div>
+                            <div class="text-3xl font-bold text-slate-800 mt-2" id="dash-loaned-br">0</div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500">
+                            <div class="text-slate-500 text-sm font-medium uppercase">Richieste Pendenti</div>
+                            <div class="text-3xl font-bold text-slate-800 mt-2" id="dash-pending-loans">0</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-xl shadow-sm">
+                            <h3 class="font-bold text-slate-800 mb-4">Stato Archiviazione</h3>
+                            <div class="h-64 relative w-full flex justify-center"><canvas id="chart-status"></canvas></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm flex flex-col">
+                            <h3 class="font-bold text-slate-800 mb-4">Accesso Rapido</h3>
+                            <div class="grid grid-cols-2 gap-4 flex-1">
+                                <button onclick="app.nav('batch-records', 'create')" class="bg-blue-50 hover:bg-blue-100 text-blue-700 p-4 rounded-lg border border-blue-200 flex flex-col items-center justify-center gap-2 transition restricted-btn" data-roles="Operatore,Supervisore,Amministratore"><i class="fas fa-plus-circle text-2xl"></i><span class="font-medium">Nuovo BR</span></button>
+                                <button onclick="app.nav('loans')" class="bg-purple-50 hover:bg-purple-100 text-purple-700 p-4 rounded-lg border border-purple-200 flex flex-col items-center justify-center gap-2 transition"><i class="fas fa-search text-2xl"></i><span class="font-medium">Cerca & Richiedi</span></button>
+                                <button onclick="app.nav('audit')" class="bg-gray-50 hover:bg-gray-100 text-gray-700 p-4 rounded-lg border border-gray-200 flex flex-col items-center justify-center gap-2 transition restricted-btn" data-roles="Supervisore,Amministratore"><i class="fas fa-history text-2xl"></i><span class="font-medium">Review Audit Log</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECURITY SETTINGS (NEW) -->
+                <div id="view-security" class="view-section hidden space-y-6">
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-lg mb-6">
+                        <h3 class="text-red-800 font-bold flex items-center"><i class="fas fa-exclamation-triangle mr-2"></i> Area Critica CFR 21 Part 11</h3>
+                        <p class="text-sm text-red-700 mt-1">Le modifiche in questa sezione alterano i criteri di sicurezza globali. Ogni modifica viene tracciata nell'Audit Trail.</p>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h3 class="text-xl font-bold text-slate-800 mb-6">Criteri Complessità Password</h3>
+                        <form id="security-settings-form" class="space-y-6">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Lunghezza Minima</label>
+                                    <input type="number" name="minLength" id="sec-min-length" class="w-full p-2 border rounded" min="4" max="32">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Scadenza Password (Giorni)</label>
+                                    <input type="number" name="expiryDays" id="sec-expiry" class="w-full p-2 border rounded" min="0">
+                                    <p class="text-xs text-slate-500 mt-1">0 = Nessuna scadenza</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Max Tentativi Login</label>
+                                    <input type="number" name="maxAttempts" id="sec-attempts" class="w-full p-2 border rounded" min="1" max="10">
+                                </div>
+                            </div>
+                            <div class="space-y-3">
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" name="requireNumber" id="sec-req-num" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span class="text-sm text-slate-700">Richiedi almeno un numero (0-9)</span>
+                                </label>
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" name="requireSpecial" id="sec-req-spec" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span class="text-sm text-slate-700">Richiedi caratteri speciali (!@#$...)</span>
+                                </label>
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" name="requireUpper" id="sec-req-upper" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span class="text-sm text-slate-700">Richiedi lettere maiuscole (A-Z)</span>
+                                </label>
+                            </div>
+                            <div class="flex justify-end pt-4 border-t">
+                                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg shadow font-bold transition">
+                                    <i class="fas fa-save mr-2"></i> Salva Policy di Sicurezza
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ARCHIVE -->
+                <div id="view-archive" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex h-[calc(100vh-10rem)]">
+                        <div class="w-1/3 border-r border-slate-200 bg-slate-50 flex flex-col">
+                            <div class="p-4 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
+                                Struttura Fisica
+                                <button onclick="app.modals.addArchive.show()" class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 restricted-btn" data-roles="Amministratore"><i class="fas fa-plus"></i></button>
+                            </div>
+                            <div id="archive-tree" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+                        </div>
+                        <div class="w-2/3 p-6 bg-white flex flex-col" id="archive-content">
+                            <div class="h-full flex flex-col items-center justify-center text-slate-400"><i class="fas fa-arrow-left text-4xl mb-4"></i><p>Seleziona un elemento dalla struttura.</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BATCH RECORDS -->
+                <div id="view-batch-records" class="view-section hidden space-y-4">
+                    <div class="flex justify-between items-center">
+                        <div class="flex gap-2">
+                            <input type="text" id="br-search" placeholder="Cerca WO, Lotto, ID..." class="border border-slate-300 rounded-lg px-4 py-2 w-64 focus:ring-2 focus:ring-blue-500 outline-none">
+                            <select id="br-filter-status" class="border border-slate-300 rounded-lg px-4 py-2 bg-white">
+                                <option value="all">Tutti gli Stati</option>
+                                <option value="In Archiviazione">In Archiviazione</option>
+                                <option value="Archiviato">Archiviato</option>
+                                <option value="In Prestito">In Prestito</option>
+                            </select>
+                        </div>
+                        <button onclick="app.modals.createBR.show()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm restricted-btn transition" data-roles="Operatore,Supervisore,Amministratore"><i class="fas fa-plus mr-2"></i> Crea Batch Record</button>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+                                <tr><th class="p-4">ID</th><th class="p-4">Work Order</th><th class="p-4">Prodotto</th><th class="p-4">Tipologia</th><th class="p-4">Stato</th><th class="p-4">Posizione</th><th class="p-4 text-right">Azioni</th></tr>
+                            </thead>
+                            <tbody id="br-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PRODUCTS MASTER DATA -->
+                <div id="view-products" class="view-section hidden space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg text-slate-700">Anagrafica Prodotti</h3>
+                        <button onclick="document.getElementById('modal-create-product').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition"><i class="fas fa-plus mr-2"></i> Nuovo Prodotto</button>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+                                <tr><th class="p-4">Codice Prodotto</th><th class="p-4">Nome Prodotto</th><th class="p-4">Descrizione</th><th class="p-4 text-right">Azioni</th></tr>
+                            </thead>
+                            <tbody id="products-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- LOANS -->
+                <div id="view-loans" class="view-section hidden space-y-6">
+                    <div id="loan-approvals-panel" class="hidden bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+                        <h3 class="font-bold text-yellow-800 mb-4 flex items-center gap-2"><i class="fas fa-clipboard-check"></i> Richieste Pendenti (Da Approvare)</h3>
+                        <div id="loans-pending-list" class="space-y-3"></div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h3 class="font-bold text-slate-800 mb-4">Prestiti Attivi & Storico</h3>
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200"><tr><th class="p-3">Batch Record</th><th class="p-3">Richiedente</th><th class="p-3">Data Uscita</th><th class="p-3">Approvato da</th><th class="p-3">Stato</th><th class="p-3 text-right">Azioni</th></tr></thead>
+                            <tbody id="loans-active-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AUDIT TRAIL -->
+                <div id="view-audit" class="view-section hidden">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-10rem)]">
+                        <div class="p-4 border-b border-slate-200 bg-slate-50 font-bold text-slate-700">Secure Audit Log</div>
+                        <div class="flex-1 overflow-y-auto">
+                            <table class="w-full text-left text-xs font-mono">
+                                <thead class="bg-slate-100 sticky top-0"><tr><th class="p-2 border-b">Timestamp</th><th class="p-2 border-b">User</th><th class="p-2 border-b">Action</th><th class="p-2 border-b">Target</th><th class="p-2 border-b">Details</th></tr></thead>
+                                <tbody id="audit-table-body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- USERS -->
+                <div id="view-users" class="view-section hidden space-y-4">
+                    <div class="flex justify-end"><button onclick="app.modals.createUser.show()" class="bg-blue-600 text-white px-4 py-2 rounded-lg"><i class="fas fa-user-plus mr-2"></i> Crea Utente</button></div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold"><tr><th class="p-4">ID</th><th class="p-4">Nome</th><th class="p-4">Ruolo</th><th class="p-4">Stato</th><th class="p-4">Azioni</th></tr></thead>
+                            <tbody id="users-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    
+    <!-- MODAL FORCE PASSWORD CHANGE -->
+    <div id="modal-force-password-change" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/90 backdrop-blur-md">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-8 border-t-4 border-orange-500">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-key text-orange-600 text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">Cambio Password Obbligatorio</h2>
+                <p class="text-sm text-slate-500 mt-2">È necessario modificare la password temporanea per accedere al sistema.</p>
+            </div>
+            
+            <form id="force-change-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nuova Password</label>
+                    <input type="password" id="force-new-pass" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="Nuova Password" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Conferma Password</label>
+                    <input type="password" id="force-confirm-pass" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" placeholder="Ripeti Password" required>
+                </div>
+                
+                <div class="bg-slate-50 p-3 rounded text-xs text-slate-600 border mt-2">
+                    <p class="font-bold mb-1">Requisiti minimi:</p>
+                    <ul id="password-requirements-list" class="list-disc ml-4 space-y-1">
+                        <li>Minimo <span id="req-len">8</span> caratteri</li>
+                    </ul>
+                </div>
+
+                <button type="submit" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-lg shadow-md mt-4 transition">
+                    Aggiorna e Accedi
+                </button>
+                <div class="text-center mt-2">
+                    <button type="button" onclick="app.logout()" class="text-xs text-slate-400 hover:text-slate-600 underline">Annulla e Logout</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-esig" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 border-t-4 border-red-600">
+            <h3 class="text-lg font-bold text-slate-800 text-center mb-4">Firma Elettronica Richiesta</h3>
+            <p class="text-xs text-slate-500 mb-4 text-center">Inserire password e motivazione per confermare l'azione.</p>
+            <form id="esig-form" class="space-y-4">
+                <input type="hidden" id="esig-callback-id">
+                <div>
+                    <label class="text-xs font-bold text-slate-600">Utente</label>
+                    <input type="text" id="esig-username" class="w-full p-2 border rounded bg-slate-100" readonly>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-600 required">Password</label>
+                    <input type="password" id="esig-password" class="w-full p-2 border rounded" required placeholder="Password">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-600 required">Motivazione / Commento</label>
+                    <textarea id="esig-comment" class="w-full p-2 border rounded text-sm" rows="2" required placeholder="Es. Approvazione verifica..."></textarea>
+                </div>
+                <div class="flex gap-2 pt-2"><button type="button" onclick="document.getElementById('modal-esig').classList.add('hidden')" class="flex-1 py-2 border rounded">Annulla</button><button type="submit" class="flex-1 py-2 bg-red-600 text-white rounded font-bold">FIRMA</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DUAL E-SIG (User + Supervisor) -->
+    <div id="modal-dual-esig" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border-t-4 border-purple-600">
+            <h3 class="text-lg font-bold text-slate-800 text-center mb-2">Doppia Firma Richiesta</h3>
+            <p class="text-xs text-slate-500 mb-4 text-center">Riconsegna BR: Richiesta firma Utente e Supervisore.</p>
+            <form id="dual-esig-form" class="space-y-4">
+                <!-- User 1 (Current) -->
+                <div class="bg-slate-50 p-3 rounded border">
+                    <div class="text-xs font-bold text-blue-800 mb-2">1. Firma Operatore (Tu)</div>
+                    <input type="text" id="dual-user1" class="w-full p-2 border rounded bg-white mb-2 text-xs" readonly>
+                    <input type="password" id="dual-pass1" class="w-full p-2 border rounded text-xs" required placeholder="La tua Password">
+                </div>
+                <!-- User 2 (Supervisor) -->
+                <div class="bg-purple-50 p-3 rounded border">
+                    <div class="text-xs font-bold text-purple-800 mb-2">2. Firma Supervisore</div>
+                    <select id="dual-user2-select" class="w-full p-2 border rounded mb-2 text-xs" required>
+                        <option value="">Seleziona Supervisore...</option>
+                    </select>
+                    <input type="password" id="dual-pass2" class="w-full p-2 border rounded text-xs" required placeholder="Password Supervisore">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-600 required">Commento Congiunto</label>
+                    <textarea id="dual-comment" class="w-full p-2 border rounded text-sm" rows="2" required placeholder="Es. Verifica integrità BR post prestito..."></textarea>
+                </div>
+                <div class="flex gap-2 pt-2"><button type="button" onclick="document.getElementById('modal-dual-esig').classList.add('hidden')" class="flex-1 py-2 border rounded">Annulla</button><button type="submit" class="flex-1 py-2 bg-purple-600 text-white rounded font-bold">CONFERMA DOPPIA FIRMA</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-create-br" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Nuovo Batch Record</h3>
+            <form id="create-br-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium required">Work Order</label><input type="text" name="wo" class="w-full p-2 border rounded" required></div>
+                    <!-- BUG 1: RIMOSSO pattern="\d+" PER PERMETTERE INSERIMENTO TESTO -->
+                    <div><label class="block text-sm font-medium required">Lotto (Solo Numeri)</label><input type="text" name="lot" class="w-full p-2 border rounded" required></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium required">Prodotto</label>
+                        <select name="product" id="create-br-product-select" class="w-full p-2 border rounded" required>
+                            <option value="">Seleziona Prodotto...</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-sm font-medium">Tipologia</label><select name="type" class="w-full p-2 border rounded"><option value="standard">Standard</option><option value="validazione">Validazione</option></select></div>
+                </div>
+                <div><label class="block text-sm font-medium">Note</label><textarea name="notes" class="w-full p-2 border rounded" rows="2"></textarea></div>
+                <div class="flex justify-end gap-2 mt-4"><button type="button" onclick="document.getElementById('modal-create-br').classList.add('hidden')" class="px-4 py-2 border rounded">Annulla</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Crea</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-create-product" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Nuovo Prodotto</h3>
+            <form id="create-product-form" class="space-y-4">
+                <div><label class="block text-sm font-medium required">Codice Prodotto</label><input type="text" name="code" class="w-full p-2 border rounded uppercase" required></div>
+                <div><label class="block text-sm font-medium required">Nome Prodotto</label><input type="text" name="name" class="w-full p-2 border rounded" required></div>
+                <div><label class="block text-sm font-medium">Descrizione</label><textarea name="desc" class="w-full p-2 border rounded" rows="2"></textarea></div>
+                <div class="flex justify-end gap-2 mt-4"><button type="button" onclick="document.getElementById('modal-create-product').classList.add('hidden')" class="px-4 py-2 border rounded">Annulla</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Salva (Richiede Firma)</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-create-user" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Nuovo Utente</h3>
+            <form id="create-user-form" class="space-y-4">
+                <div><label class="block text-sm font-medium">ID Utente</label><input type="text" name="uid" class="w-full p-2 border rounded uppercase" required></div>
+                <div><label class="block text-sm font-medium">Nome</label><input type="text" name="name" class="w-full p-2 border rounded" required></div>
+                <div><label class="block text-sm font-medium">Ruolo</label><select name="role" class="w-full p-2 border rounded"><option value="Read Only">Read Only</option><option value="Operatore">Operatore</option><option value="Supervisore">Supervisore</option><option value="Amministratore">Amministratore</option></select></div>
+                <div><label class="block text-sm font-medium">Password</label><input type="password" name="pass" class="w-full p-2 border rounded" value="password123" required></div>
+                <div class="flex justify-end gap-2 mt-4"><button type="button" onclick="document.getElementById('modal-create-user').classList.add('hidden')" class="px-4 py-2 border rounded">Annulla</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Salva</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="modal-add-archive" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Aggiungi Elemento Archivio</h3>
+            <form id="add-archive-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium">Tipo</label>
+                    <select id="archive-type-select" name="type" class="w-full p-2 border rounded" onchange="app.updateParentSelect()">
+                        <option value="archive">Archivio (Root)</option><option value="cupboard">Armadio</option><option value="shelf">Scaffale</option><option value="binder">Faldone</option>
+                    </select>
+                </div>
+                <div id="parent-select-container" class="hidden"><label class="block text-sm font-medium">Padre</label><select id="archive-parent-select" name="parentId" class="w-full p-2 border rounded"></select></div>
+                <div><label class="block text-sm font-medium">Nome/Codice</label><input type="text" name="name" class="w-full p-2 border rounded" required></div>
+                <div class="flex justify-end gap-2 mt-4"><button type="button" onclick="document.getElementById('modal-add-archive').classList.add('hidden')" class="px-4 py-2 border rounded">Annulla</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Aggiungi</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="modal-archive-select" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 h-[500px] flex flex-col">
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Seleziona Posizione</h3>
+            <div id="archive-select-info" class="hidden mb-2 p-2 rounded text-xs border"></div>
+            <div id="archive-select-tree" class="flex-1 border rounded p-2 overflow-y-auto bg-slate-50"></div>
+            <div class="mt-4 flex justify-end gap-2"><button onclick="document.getElementById('modal-archive-select').classList.add('hidden')" class="px-4 py-2 border rounded">Annulla</button><button id="btn-confirm-archive" disabled class="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50">Conferma</button></div>
+        </div>
+    </div>
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <!-- Single Module Script for Everything -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURAZIONE FIREBASE (DA COMPILARE) ---
+        // 1. Vai su https://console.firebase.google.com/
+        // 2. Crea un progetto, aggiungi una Web App
+        // 3. Copia l'oggetto firebaseConfig qui sotto:
+        // 4. Assicurati di abilitare "Anonymous Auth" e "Firestore Database" in modalità Test
+        const firebaseConfig = {
+			apiKey: "AIzaSyCeSKf5EV-Hc4yhWy_MRcAwZVGt2oEDbYE",
+			authDomain: "gmparchive-80a71.firebaseapp.com",
+			projectId: "gmparchive-80a71",
+			storageBucket: "gmparchive-80a71.firebasestorage.app",
+			messagingSenderId: "883733851688",
+			appId: "1:883733851688:web:1a2e31872294bf13b70f1d",
+			measurementId: "G-WLWZ8DH30P"
+        };
+        
+        const appId = 'gmp-public-demo'; // Nome fisso per l'app pubblica
+        
+        // Init Firebase
+        let auth, db;
+        // Simple check if config is filled (not strict validation)
+        if (firebaseConfig.apiKey !== "INSERISCI_API_KEY_QUI") {
+            const fbApp = initializeApp(firebaseConfig);
+            auth = getAuth(fbApp);
+            db = getFirestore(fbApp);
+        } else {
+            console.error("Firebase Config Mancante! Compila la sezione nello script.");
+            alert("Attenzione: Devi configurare Firebase nel codice HTML per far funzionare l'app!");
+        }
+
+        const SEED_DATA = {
+            users: [
+                { id: 'ADMIN', name: 'System Administrator', role: 'Amministratore', pass: 'password123', status: 'Attivo' },
+                { id: 'SUP', name: 'Mario Rossi', role: 'Supervisore', pass: 'password123', status: 'Attivo' },
+                { id: 'OP', name: 'Luca Bianchi', role: 'Operatore', pass: 'password123', status: 'Attivo' },
+                { id: 'READ', name: 'Anna Verdi', role: 'Read Only', pass: 'password123', status: 'Attivo' }
+            ],
+            products: [
+                { id: 'PROD-001', name: 'Paracetamolo 500mg', code: 'PCM500', desc: 'Compresse' },
+                { id: 'PROD-002', name: 'Ibuprofene 200mg', code: 'IBU200', desc: 'Sciroppo' }
+            ],
+            archives: [
+                { id: 'ARCH-01', name: 'Archivio GMP Centrale' },
+                { id: 'ARCH-VAL', name: 'Archivio BR Validazione' }
+            ],
+            cupboards: [
+                { id: 'ARM-A', name: 'Armadio A (Solidi)', parentId: 'ARCH-01' },
+                { id: 'ARM-B', name: 'Armadio B (Liquidi)', parentId: 'ARCH-01' },
+                { id: 'ARM-VAL-1', name: 'Armadio Val 1', parentId: 'ARCH-VAL' }
+            ],
+            shelves: [
+                { id: 'SCAFF-A1', name: 'Scaffale A1', parentId: 'ARM-A' },
+                { id: 'SCAFF-VAL-1A', name: 'Scaffale Val 1A', parentId: 'ARM-VAL-1' }
+            ],
+            binders: [
+                { id: 'FALD-2025-001', code: '2025-001', parentId: 'SCAFF-A1', status: 'Disponibile' },
+                { id: 'FALD-VAL-001', code: 'VAL-2025-01', parentId: 'SCAFF-VAL-1A', status: 'Disponibile' }
+            ],
+            systemSettings: [
+                { id: 'security', minLength: 8, requireNumber: true, requireSpecial: true, requireUpper: true, expiryDays: 90, maxAttempts: 3 }
+            ]
+        };
+
+        // Main App Object attached to Window for HTML access
+        window.app = {
+            db: { users:[], products:[], archives:[], cupboards:[], shelves:[], binders:[], batchRecords:[], loans:[], auditTrail:[], systemSettings: [] },
+            currentUser: null,
+            listeners: [],
+            
+            init: async () => {
+                app.renderTime();
+                setInterval(app.renderTime, 1000);
+                
+                if(!auth) {
+                    document.getElementById('loading-text').textContent = "Errore Configurazione Firebase. Vedi Console.";
+                    return;
+                }
+
+                document.getElementById('loading-text').textContent = "Autenticazione...";
+
+                setTimeout(() => {
+                    const overlay = document.getElementById('loading-overlay');
+                    if(!overlay.classList.contains('fade-out') && !overlay.classList.contains('hidden')) {
+                        console.warn("Forcing app start due to timeout");
+                        app.checkCompletion(true);
+                    }
+                }, 7000);
+
+                try {
+                    await signInAnonymously(auth);
+                } catch(e) {
+                    console.error("Auth Failed", e);
+                    document.getElementById('loading-text').textContent = "Errore Auth: " + e.message;
+                    return;
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        document.getElementById('loading-text').textContent = "Sincronizzazione Dati...";
+                        app.startSync(user);
+                    }
+                });
+
+                document.getElementById('login-form').addEventListener('submit', app.handleLogin);
+                document.getElementById('force-change-form').addEventListener('submit', app.handleForcePasswordChange);
+                document.getElementById('security-settings-form').addEventListener('submit', app.handleSaveSecuritySettings);
+                document.getElementById('esig-form').addEventListener('submit', app.handleESig);
+                document.getElementById('dual-esig-form').addEventListener('submit', app.handleDualESig);
+                document.getElementById('create-br-form').addEventListener('submit', app.handleCreateBR);
+                document.getElementById('create-user-form').addEventListener('submit', app.handleCreateUser);
+                document.getElementById('create-product-form').addEventListener('submit', app.handleCreateProduct);
+                document.getElementById('add-archive-form').addEventListener('submit', app.handleAddArchive);
+                document.getElementById('br-search').addEventListener('input', app.renderBatchRecords);
+                document.getElementById('br-filter-status').addEventListener('change', app.renderBatchRecords);
+            },
+
+            startSync: (user) => {
+                if (!user) return;
+                
+                app.listeners.forEach(u => u());
+                app.listeners = [];
+
+                const collections = ['users', 'products', 'archives', 'cupboards', 'shelves', 'binders', 'batchRecords', 'loans', 'auditTrail', 'systemSettings'];
+                app.loadedCount = 0;
+                app.totalCollections = collections.length;
+
+                collections.forEach(colName => {
+                    // Public Path Simplification for GitHub Demo
+                    const colRef = collection(db, 'gmp-app-data', colName); 
+                    
+                    const unsub = onSnapshot(colRef, (snapshot) => {
+                        const data = [];
+                        snapshot.forEach(doc => data.push({ ...doc.data(), _id: doc.id }));
+                        
+                        if(colName === 'auditTrail') data.sort((a,b) => new Date(b.ts) - new Date(a.ts));
+                        app.db[colName] = data;
+                        
+                        app.checkCompletion();
+                        app.refreshCurrentView();
+                    }, (error) => {
+                        console.error(`Sync error ${colName}:`, error);
+                        app.checkCompletion();
+                    });
+                    
+                    app.listeners.push(unsub);
+                });
+            },
+
+            checkCompletion: (force = false) => {
+                if(!force) app.loadedCount = (app.loadedCount || 0) + 1;
+                
+                if(force || app.loadedCount >= app.totalCollections) {
+                     const overlay = document.getElementById('loading-overlay');
+                     if(!overlay.classList.contains('fade-out')) {
+                        overlay.classList.add('fade-out');
+                        setTimeout(() => {
+                            overlay.classList.add('hidden');
+                            if(!app.currentUser) {
+                                document.getElementById('login-screen').classList.remove('hidden');
+                            } else {
+                                // If user was already logged in but sync refreshed, re-check force pass logic
+                                if (app.currentUser.pass === 'password123' || app.currentUser.forceReset) {
+                                    // Should handle via standard login flow primarily, but good safety
+                                }
+                                app.refreshCurrentView();
+                            }
+                        }, 500);
+                        app.checkSeed();
+                     }
+                }
+            },
+
+            checkSeed: async () => {
+                if(app.db.users && app.db.users.length === 0) {
+                    console.log("Seeding Database...");
+                    const addToCol = async (col, item) => {
+                        // Public Path Simplification
+                        const ref = collection(db, 'gmp-app-data', col); 
+                        if(item.id) await setDoc(doc(ref, item.id), item);
+                        else await addDoc(ref, item);
+                    };
+                    for(let u of SEED_DATA.users) await addToCol('users', u);
+                    for(let p of SEED_DATA.products) await addToCol('products', p);
+                    for(let a of SEED_DATA.archives) await addToCol('archives', a);
+                    for(let c of SEED_DATA.cupboards) await addToCol('cupboards', c);
+                    for(let s of SEED_DATA.shelves) await addToCol('shelves', s);
+                    for(let b of SEED_DATA.binders) await addToCol('binders', b);
+                    for(let s of SEED_DATA.systemSettings) await addToCol('systemSettings', s);
+                    app.toast("Database Inizializzato", "success");
+                }
+            },
+
+            refreshCurrentView: () => {
+                if(app.currentUser) {
+                    app.updateProductSelects(); 
+                    if(!document.getElementById('view-dashboard').classList.contains('hidden')) app.renderDashboard();
+                    if(!document.getElementById('view-archive').classList.contains('hidden')) app.renderArchiveTree();
+                    if(!document.getElementById('view-batch-records').classList.contains('hidden')) app.renderBatchRecords();
+                    if(!document.getElementById('view-products').classList.contains('hidden')) app.renderProducts();
+                    if(!document.getElementById('view-loans').classList.contains('hidden')) app.renderLoans();
+                    if(!document.getElementById('view-audit').classList.contains('hidden')) app.renderAudit();
+                    if(!document.getElementById('view-users').classList.contains('hidden')) app.renderUsers();
+                    if(!document.getElementById('view-security').classList.contains('hidden')) app.renderSecuritySettings();
+                }
+            },
+
+            // --- WRITES ---
+            dbSet: async (colName, docId, data) => {
+                if(!auth.currentUser) return;
+                try {
+                    // Public Path Simplification
+                    const ref = doc(db, 'gmp-app-data', colName, docId);
+                    await setDoc(ref, data);
+                } catch(e) { app.handleError(e); }
+            },
+            
+            dbDelete: async (colName, docId) => {
+                if(!auth.currentUser) return;
+                 try {
+                    // Public Path Simplification
+                    const ref = doc(db, 'gmp-app-data', colName, docId);
+                    await deleteDoc(ref);
+                } catch(e) { app.handleError(e); }
+            },
+
+            handleError: (e) => {
+                console.error(e);
+                app.toast("Errore Database: " + e.message, "error");
+            },
+
+            logAudit: async (action, targetId, details) => {
+                const entry = {
+                    ts: new Date().toISOString(),
+                    user: app.currentUser ? app.currentUser.id : 'SYSTEM',
+                    action: action,
+                    target: targetId,
+                    details: details
+                };
+                // Public Path Simplification
+                const ref = collection(db, 'gmp-app-data', 'auditTrail');
+                await addDoc(ref, entry);
+            },
+
+            // --- AUTH & ACCESS ---
+            handleLogin: (e) => {
+                e.preventDefault();
+                const u = document.getElementById('login-username').value.trim();
+                const p = document.getElementById('login-password').value.trim();
+                const user = app.db.users.find(x => x.id === u && x.pass === p);
+                
+                if(user) {
+                    if(user.status !== 'Attivo') return app.toast('Account bloccato', 'error');
+                    
+                    // CHECK FOR FORCED PASSWORD CHANGE (Default pass or Flag)
+                    if (user.pass === 'password123' || user.forceReset) {
+                        app.tempUserForReset = user;
+                        app.showForceChangeModal(user);
+                        return;
+                    }
+
+                    app.currentUser = user;
+                    app.logAudit('LOGIN_SUCCESS', user.id, 'User logged in');
+                    app.showApp();
+                    document.getElementById('login-form').reset();
+                } else {
+                    app.logAudit('LOGIN_FAIL', u, 'Invalid credentials');
+                    app.toast('Credenziali non valide', 'error');
+                }
+            },
+            logout: () => {
+                if(app.currentUser) app.logAudit('LOGOUT', app.currentUser.id, 'User logged out');
+                app.currentUser = null;
+                app.tempUserForReset = null;
+                document.getElementById('app-layout').classList.add('hidden');
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('modal-force-password-change').classList.add('hidden');
+            },
+            showApp: () => {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('modal-force-password-change').classList.add('hidden');
+                document.getElementById('app-layout').classList.remove('hidden');
+                document.getElementById('user-name').textContent = app.currentUser.name;
+                document.getElementById('user-role').textContent = app.currentUser.role;
+                document.getElementById('user-avatar').textContent = app.currentUser.name.charAt(0);
+                document.getElementById('esig-username').value = app.currentUser.id;
+                document.getElementById('dual-user1').value = app.currentUser.id;
+                app.applyRBAC();
+                app.nav('dashboard');
+            },
+            applyRBAC: () => {
+                const role = app.currentUser.role;
+                if(['Amministratore'].includes(role)) {
+                     document.getElementById('nav-users').classList.remove('hidden');
+                     document.getElementById('nav-security').classList.remove('hidden');
+                }
+                if(['Amministratore', 'Supervisore'].includes(role)) {
+                    document.getElementById('nav-audit').classList.remove('hidden');
+                    document.getElementById('nav-products').classList.remove('hidden');
+                }
+                document.querySelectorAll('.restricted-btn').forEach(btn => {
+                    const allowed = btn.dataset.roles.split(',');
+                    if(!allowed.includes(role)) btn.classList.add('hidden'); else btn.classList.remove('hidden');
+                });
+            },
+            nav: (view, subAction = null) => {
+                document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+                document.getElementById(`view-${view}`).classList.remove('hidden');
+                const titles = { 'dashboard': 'Dashboard', 'archive': 'Archivio Fisico', 'batch-records': 'Gestione Batch Records', 'products': 'Anagrafica Prodotti', 'loans': 'Gestione Prestiti', 'audit': 'Audit Trail', 'users': 'Utenti di Sistema', 'security': 'Sicurezza & Policy' };
+                document.getElementById('page-title').textContent = titles[view];
+                app.refreshCurrentView();
+                if(view === 'batch-records' && subAction === 'create') app.modals.createBR.show();
+            },
+
+            // --- SECURITY SETTINGS LOGIC ---
+            getSecurityPolicy: () => {
+                return app.db.systemSettings.find(s => s.id === 'security') || { minLength: 8, requireNumber: true, requireSpecial: true, requireUpper: true, expiryDays: 90, maxAttempts: 3 };
+            },
+            renderSecuritySettings: () => {
+                const policy = app.getSecurityPolicy();
+                document.getElementById('sec-min-length').value = policy.minLength;
+                document.getElementById('sec-expiry').value = policy.expiryDays;
+                document.getElementById('sec-attempts').value = policy.maxAttempts;
+                document.getElementById('sec-req-num').checked = policy.requireNumber;
+                document.getElementById('sec-req-spec').checked = policy.requireSpecial;
+                document.getElementById('sec-req-upper').checked = policy.requireUpper;
+            },
+            handleSaveSecuritySettings: (e) => {
+                e.preventDefault();
+                app.triggerESig('UPDATE_SECURITY_POLICY', async (comment) => {
+                     const newPolicy = {
+                         id: 'security',
+                         minLength: parseInt(document.getElementById('sec-min-length').value),
+                         expiryDays: parseInt(document.getElementById('sec-expiry').value),
+                         maxAttempts: parseInt(document.getElementById('sec-attempts').value),
+                         requireNumber: document.getElementById('sec-req-num').checked,
+                         requireSpecial: document.getElementById('sec-req-spec').checked,
+                         requireUpper: document.getElementById('sec-req-upper').checked
+                     };
+                     await app.dbSet('systemSettings', 'security', newPolicy);
+                     await app.logAudit('SEC_POLICY_UPDATE', 'SYSTEM', `Policy updated. Reason: ${comment}`);
+                     app.toast('Policy di Sicurezza Aggiornata', 'success');
+                });
+            },
+
+            // --- FORCE PASSWORD CHANGE LOGIC ---
+            showForceChangeModal: (user) => {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('modal-force-password-change').classList.remove('hidden');
+                
+                const policy = app.getSecurityPolicy();
+                let reqHtml = `<li>Minimo <span id="req-len">${policy.minLength}</span> caratteri</li>`;
+                if(policy.requireNumber) reqHtml += `<li>Almeno un numero</li>`;
+                if(policy.requireSpecial) reqHtml += `<li>Almeno un carattere speciale</li>`;
+                if(policy.requireUpper) reqHtml += `<li>Almeno una maiuscola</li>`;
+                document.getElementById('password-requirements-list').innerHTML = reqHtml;
+            },
+            
+            validatePassword: (pass) => {
+                 const policy = app.getSecurityPolicy();
+                 if (pass.length < policy.minLength) return "Lunghezza insufficiente";
+                 if (policy.requireNumber && !/\d/.test(pass)) return "Manca un numero";
+                 if (policy.requireUpper && !/[A-Z]/.test(pass)) return "Manca una maiuscola";
+                 if (policy.requireSpecial && !/[!@#$%^&*(),.?":{}|<>]/.test(pass)) return "Manca carattere speciale";
+                 return null;
+            },
+
+            handleForcePasswordChange: async (e) => {
+                e.preventDefault();
+                const newPass = document.getElementById('force-new-pass').value;
+                const confirmPass = document.getElementById('force-confirm-pass').value;
+                
+                if (newPass !== confirmPass) return app.toast('Le password non coincidono', 'error');
+                if (newPass === 'password123') return app.toast('Non puoi riutilizzare la password di default', 'error');
+                
+                const error = app.validatePassword(newPass);
+                if (error) return app.toast(`Policy Violata: ${error}`, 'error');
+
+                // Update User
+                const user = app.tempUserForReset;
+                user.pass = newPass;
+                delete user.forceReset; // Clear flag
+                
+                await app.dbSet('users', user.id, user);
+                await app.logAudit('PASS_CHANGE', user.id, 'Forced password change completed');
+                
+                app.currentUser = user;
+                app.tempUserForReset = null;
+                app.showApp();
+                app.toast('Password aggiornata con successo', 'success');
+            },
+
+            // --- PRODUCT MANAGEMENT ---
+            updateProductSelects: () => {
+                const selects = ['create-br-product-select'];
+                selects.forEach(id => {
+                    const el = document.getElementById(id);
+                    if(el) {
+                        const current = el.value;
+                        el.innerHTML = `<option value="">Seleziona Prodotto...</option>` + 
+                            app.db.products.map(p => `<option value="${p.name}">${p.code} - ${p.name}</option>`).join('');
+                        if(current) el.value = current;
+                    }
+                });
+            },
+            renderProducts: () => {
+                const tbody = document.getElementById('products-table-body');
+                tbody.innerHTML = app.db.products.map(p => `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-4 font-mono font-bold text-slate-700">${p.code}</td>
+                        <td class="p-4">${p.name}</td>
+                        <td class="p-4 text-slate-500 text-sm">${p.desc}</td>
+                        <td class="p-4 text-right">
+                            <button onclick="app.deleteProduct('${p.id}')" class="text-red-600 hover:text-red-800 text-sm"><i class="fas fa-trash"></i> Elimina</button>
+                        </td>
+                    </tr>
+                `).join('');
+            },
+            handleCreateProduct: (e) => {
+                e.preventDefault();
+                app.triggerESig('CREAZIONE_PRODOTTO', async (comment) => {
+                    const data = new FormData(document.getElementById('create-product-form'));
+                    const newProd = {
+                        id: 'PROD-' + Date.now(),
+                        code: data.get('code').toUpperCase(),
+                        name: data.get('name'),
+                        desc: data.get('desc')
+                    };
+                    await app.dbSet('products', newProd.id, newProd);
+                    await app.logAudit('CREATE_PROD', newProd.id, `Product created. Reason: ${comment}`);
+                    document.getElementById('modal-create-product').classList.add('hidden');
+                    e.target.reset(); // Reset the specific form
+                    app.toast('Prodotto Creato', 'success');
+                });
+            },
+            deleteProduct: (id) => {
+                app.triggerESig('ELIMINAZIONE_PRODOTTO', async (comment) => {
+                     await app.dbDelete('products', id);
+                     await app.logAudit('DELETE_PROD', id, `Product deleted. Reason: ${comment}`);
+                     app.toast('Prodotto Eliminato', 'success');
+                });
+            },
+
+            // --- BATCH RECORDS ---
+            handleCreateBR: async (e) => {
+                e.preventDefault();
+                const data = new FormData(e.target);
+                
+                // Validation logic
+                const lot = data.get('lot');
+                // BUG 1: VALIDAZIONE REGEX RIMOSSA
+                /*
+                if(!/^\d+$/.test(lot)) {
+                    return app.toast('Errore: Il lotto deve contenere solo numeri.', 'error');
+                }
+                */
+
+                const newBR = {
+                    id: 'BR-' + Math.floor(Math.random() * 100000),
+                    wo: data.get('wo'),
+                    lot: lot,
+                    product: data.get('product'),
+                    type: data.get('type') || 'standard',
+                    notes: data.get('notes'),
+                    status: 'In Archiviazione',
+                    binderId: null,
+                    loanId: null
+                };
+                await app.dbSet('batchRecords', newBR.id, newBR);
+                await app.logAudit('CREATE_BR', newBR.id, `Created BR (${newBR.type}) WO ${newBR.wo}`);
+                document.getElementById('modal-create-br').classList.add('hidden');
+                e.target.reset();
+                app.toast('BR Creato', 'success');
+                app.nav('batch-records');
+                setTimeout(() => { if(confirm("Archiviare ora?")) app.openArchiveSelector(newBR.id); }, 500);
+            },
+
+            // --- LOANS LOGIC ---
+            requestLoan: (brId) => {
+                // TUTTE le richieste ora necessitano approvazione come da specifica
+                const loan = { id: 'LOAN-' + Date.now(), brId: brId, userId: app.currentUser.id, reqDate: new Date().toISOString(), status: 'PENDING' };
+                app.dbSet('loans', loan.id, loan);
+                app.logAudit('LOAN_REQ', brId, `Loan requested by ${app.currentUser.id}`);
+                app.toast('Richiesta di prestito inviata. In attesa di approvazione.', 'info');
+            },
+            
+            approveLoan: (loanId) => {
+                app.triggerESig('APPROVAZIONE_PRESTITO', async (comment) => {
+                    const loan = app.db.loans.find(l => l.id === loanId);
+                    const br = app.db.batchRecords.find(b => b.id === loan.brId);
+                    loan.status = 'ACTIVE'; loan.approvedBy = app.currentUser.id; loan.outDate = new Date().toISOString();
+                    br.status = 'In Prestito'; br.loanId = loan.id;
+                    await app.dbSet('loans', loan.id, loan);
+                    await app.dbSet('batchRecords', br.id, br);
+                    await app.logAudit('LOAN_APPROVE', br.id, `Approved for ${loan.userId}. Note: ${comment}`);
+                    app.toast('Approvato', 'success');
+                });
+            },
+
+            returnLoan: (loanId) => {
+                // Trigger DUAL signature flow
+                const loan = app.db.loans.find(l => l.id === loanId);
+                app.triggerDualESig(loan, async (comment) => {
+                    const br = app.db.batchRecords.find(b => b.id === loan.brId);
+                    loan.status = 'RETURNED'; loan.inDate = new Date().toISOString();
+                    br.status = 'Archiviato'; br.loanId = null;
+                    await app.dbSet('loans', loan.id, loan);
+                    await app.dbSet('batchRecords', br.id, br);
+                    // BUG 2: COMMENTO IGNORATO NELL'AUDIT TRAIL
+                    await app.logAudit('LOAN_RETURN', br.id, `Returned (Dual Sig)`); 
+                    app.toast('Restituito con successo', 'success');
+                });
+            },
+
+            // --- E-SIGNATURES ---
+            triggerESig: (action, cb) => {
+                document.getElementById('modal-esig').classList.remove('hidden');
+                document.getElementById('esig-comment').value = '';
+                document.getElementById('esig-password').value = '';
+                app.esigCb = cb; 
+                app.esigAct = action;
+            },
+            handleESig: (e) => {
+                e.preventDefault();
+                const pass = document.getElementById('esig-password').value;
+                const comment = document.getElementById('esig-comment').value;
+                
+                if(pass === app.currentUser.pass) {
+                    document.getElementById('modal-esig').classList.add('hidden');
+                    app.logAudit('E_SIG_OK', app.currentUser.id, `Sig for ${app.esigAct}`);
+                    if(app.esigCb) app.esigCb(comment);
+                } else {
+                    app.toast('Password Errata', 'error');
+                    app.logAudit('E_SIG_FAIL', app.currentUser.id, `Sig fail for ${app.esigAct}`);
+                }
+            },
+
+            // --- DUAL E-SIGNATURE (Return) ---
+            triggerDualESig: (loan, cb) => {
+                const modal = document.getElementById('modal-dual-esig');
+                modal.classList.remove('hidden');
+                
+                // Populate Supervisor Select (Exclude current user usually, but allow for demo)
+                const supervisors = app.db.users.filter(u => ['Supervisore', 'Amministratore'].includes(u.role));
+                const select = document.getElementById('dual-user2-select');
+                select.innerHTML = `<option value="">Seleziona Supervisore...</option>` + 
+                    supervisors.map(u => `<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+
+                document.getElementById('dual-pass1').value = '';
+                document.getElementById('dual-pass2').value = '';
+                document.getElementById('dual-comment').value = '';
+                
+                app.dualEsigCb = cb;
+            },
+            handleDualESig: (e) => {
+                e.preventDefault();
+                const pass1 = document.getElementById('dual-pass1').value;
+                const user2Id = document.getElementById('dual-user2-select').value;
+                const pass2 = document.getElementById('dual-pass2').value;
+                const comment = document.getElementById('dual-comment').value;
+
+                // Verify User 1 (Current)
+                if(pass1 !== app.currentUser.pass) return app.toast('Password Operatore Errata', 'error');
+
+                // Verify User 2 (Supervisor)
+                const supervisor = app.db.users.find(u => u.id === user2Id);
+                if(!supervisor || supervisor.pass !== pass2) return app.toast('Password Supervisore Errata', 'error');
+
+                document.getElementById('modal-dual-esig').classList.add('hidden');
+                app.logAudit('DUAL_ESIG_OK', app.currentUser.id, `Dual Sig with ${supervisor.id}`);
+                if(app.dualEsigCb) app.dualEsigCb(`Dual Sig (${app.currentUser.id} + ${supervisor.id}): ${comment}`);
+            },
+
+            // --- GENERIC RENDERING ---
+            renderDashboard: () => {
+                document.getElementById('dash-total-br').textContent = app.db.batchRecords.length;
+                document.getElementById('dash-archived-br').textContent = app.db.batchRecords.filter(b => b.status === 'Archiviato').length;
+                document.getElementById('dash-loaned-br').textContent = app.db.batchRecords.filter(b => b.status === 'In Prestito').length;
+                const pending = app.db.loans.filter(l => l.status === 'PENDING').length;
+                document.getElementById('dash-pending-loans').textContent = pending;
+                document.getElementById('badge-loans').textContent = pending || "";
+                document.getElementById('badge-loans').classList.toggle('hidden', pending === 0);
+                const ctx = document.getElementById('chart-status').getContext('2d');
+                if(window.myChart) window.myChart.destroy();
+                window.myChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['In Archiviazione', 'Archiviati', 'In Prestito'],
+                        datasets: [{
+                            data: [
+                                app.db.batchRecords.filter(b => b.status === 'In Archiviazione').length,
+                                app.db.batchRecords.filter(b => b.status === 'Archiviato').length,
+                                app.db.batchRecords.filter(b => b.status === 'In Prestito').length
+                            ],
+                            backgroundColor: ['#3b82f6', '#22c55e', '#eab308']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            },
+            renderBatchRecords: () => {
+                const tbody = document.getElementById('br-table-body');
+                const search = document.getElementById('br-search').value.toLowerCase();
+                const filter = document.getElementById('br-filter-status').value;
+                tbody.innerHTML = '';
+                const filtered = app.db.batchRecords.filter(br => {
+                    const binder = app.db.binders.find(b => b.id === br.binderId);
+                    const binderCode = binder ? binder.code.toLowerCase() : '';
+                    const matchesSearch = br.wo.toLowerCase().includes(search) || br.lot.toLowerCase().includes(search) || br.id.toLowerCase().includes(search) || binderCode.includes(search);
+                    
+                    let matchesFilter = filter === 'all' || br.status === filter;
+                    // BUG 3: LA CECITÀ DEL FILTRO
+                    if(filter === 'In Prestito') matchesFilter = false; 
+
+                    return matchesSearch && matchesFilter;
+                });
+                filtered.forEach(br => {
+                    const binder = app.db.binders.find(b => b.id === br.binderId);
+                    const loc = binder ? `<span class="font-mono text-xs bg-slate-100 px-2 py-1 rounded">${binder.code}</span>` : '<span class="text-red-400 italic">Non Archiviato</span>';
+                    const statusColors = { 'In Archiviazione': 'bg-blue-100 text-blue-700', 'Archiviato': 'bg-green-100 text-green-700', 'In Prestito': 'bg-yellow-100 text-yellow-700' };
+                    const typeBadge = br.type === 'validazione' ? '<span class="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-xs font-bold">Validazione</span>' : '<span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">Standard</span>';
+                    let actions = '';
+                    if(br.status === 'In Archiviazione') actions += `<button onclick="app.openArchiveSelector('${br.id}')" class="text-blue-600 hover:underline text-sm mr-2">Archivia</button>`;
+                    else if (br.status === 'Archiviato') actions += `<button onclick="app.requestLoan('${br.id}')" class="text-purple-600 hover:underline text-sm">Richiedi Prestito</button>`;
+                    tbody.innerHTML += `<tr class="hover:bg-slate-50 transition">
+                        <td class="p-4 font-mono text-sm text-slate-600">${br.id}</td>
+                        <td class="p-4 font-bold text-slate-700">${br.wo}</td>
+                        <td class="p-4"><div class="text-sm font-bold">${br.product}</div><div class="text-xs text-slate-500">Lot: ${br.lot}</div></td>
+                        <td class="p-4">${typeBadge}</td>
+                        <td class="p-4"><span class="px-2 py-1 rounded-full text-xs font-bold ${statusColors[br.status]}">${br.status}</span></td>
+                        <td class="p-4">${loc}</td>
+                        <td class="p-4 text-right">${actions}</td>
+                    </tr>`;
+                });
+            },
+            renderLoans: () => {
+                const pendingList = document.getElementById('loans-pending-list');
+                const approvalPanel = document.getElementById('loan-approvals-panel');
+                // Logica aggiornata: Tutte le richieste pending vengono mostrate a Supervisor/Admin
+                if(['Supervisore', 'Amministratore'].includes(app.currentUser.role)) {
+                    const pendings = app.db.loans.filter(l => l.status === 'PENDING');
+                    approvalPanel.classList.toggle('hidden', pendings.length === 0);
+                    pendingList.innerHTML = pendings.map(l => {
+                        const br = app.db.batchRecords.find(b => b.id === l.brId);
+                        return `<div class="bg-white p-3 rounded border border-yellow-300 flex justify-between items-center"><div><div class="font-bold text-sm">${br.wo}</div><div class="text-xs text-slate-500">Richiesto da: ${l.userId}</div></div><div class="flex gap-2"><button onclick="app.rejectLoan('${l.id}')" class="text-red-600 text-xs">Rifiuta</button><button onclick="app.approveLoan('${l.id}')" class="bg-green-600 text-white text-xs px-3 py-1 rounded">Approva</button></div></div>`;
+                    }).join('');
+                } else { approvalPanel.classList.add('hidden'); }
+                
+                const tbody = document.getElementById('loans-active-body');
+                tbody.innerHTML = '';
+                app.db.loans.filter(l => l.status === 'ACTIVE').forEach(l => {
+                    const br = app.db.batchRecords.find(b => b.id === l.brId);
+                    // Per restituire: Se sei l'utente che l'ha preso O se sei un Admin (override)
+                    let canReturn = (l.userId === app.currentUser.id || app.currentUser.role === 'Amministratore');
+                    let action = canReturn ? `<button onclick="app.returnLoan('${l.id}')" class="text-blue-600 hover:underline text-sm font-bold">Restituisci</button>` : `<span class="text-slate-400 italic text-xs">In uso da altri</span>`;
+                    tbody.innerHTML += `<tr><td class="p-3 font-bold text-slate-700">${br.wo}</td><td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-mono">${l.userId}</span></td><td class="p-3 text-xs">${new Date(l.outDate).toLocaleString()}</td><td class="p-3 text-xs">${l.approvedBy || '-'}</td><td class="p-3"><span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">Attivo</span></td><td class="p-3 text-right">${action}</td></tr>`;
+                });
+            },
+            // ... rest of standard render functions (archive, audit, users) ...
+            renderArchiveTree: () => {
+                const container = document.getElementById('archive-tree');
+                container.innerHTML = '';
+                let html = '';
+                app.db.archives.forEach(arch => {
+                    html += `<div class="font-bold text-blue-800 p-2 bg-blue-50 rounded mb-1"><i class="fas fa-building mr-2"></i>${arch.name}</div>`;
+                    app.db.cupboards.filter(c => c.parentId === arch.id).forEach(cup => {
+                        html += `<div class="ml-4 text-slate-700 p-1 hover:bg-slate-100 cursor-pointer rounded" onclick="app.showNodeContent('cupboard', '${cup.id}')"><i class="fas fa-door-closed mr-2"></i>${cup.name}</div>`;
+                        app.db.shelves.filter(s => s.parentId === cup.id).forEach(shelf => {
+                            html += `<div class="ml-8 text-slate-600 p-1 hover:bg-slate-100 cursor-pointer rounded" onclick="app.showNodeContent('shelf', '${shelf.id}')"><i class="fas fa-layer-group mr-2"></i>${shelf.name}</div>`;
+                        });
+                    });
+                });
+                container.innerHTML = html;
+            },
+            showNodeContent: (type, id) => {
+                const content = document.getElementById('archive-content');
+                if(type === 'shelf') {
+                    const shelf = app.db.shelves.find(s => s.id === id);
+                    const binders = app.db.binders.filter(b => b.parentId === id);
+                    let html = `<h3 class="text-2xl font-bold text-slate-800 mb-4"><i class="fas fa-layer-group mr-2"></i>${shelf ? shelf.name : 'Scaffale'}</h3><div class="grid grid-cols-3 gap-4">`;
+                    if(binders.length === 0) html += `<p class="text-slate-400 col-span-3">Nessun faldone.</p>`;
+                    binders.forEach(b => {
+                        const count = app.db.batchRecords.filter(br => br.binderId === b.id).length;
+                        html += `<div class="border border-slate-300 rounded-lg p-4 hover:shadow-md transition cursor-pointer bg-blue-50" onclick="app.openBinder('${b.id}')">
+                                <div class="flex justify-between items-start"><i class="fas fa-folder text-3xl text-blue-400"></i><span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">${count} BR</span></div>
+                                <div class="mt-2 font-bold text-slate-700">${b.code}</div><div class="text-xs text-slate-500">ID: ${b.id}</div></div>`;
+                    });
+                    html += `</div>`;
+                    content.innerHTML = html;
+                } else {
+                     content.innerHTML = `<div class="h-full flex items-center justify-center text-slate-400">Seleziona uno Scaffale per vedere i Faldoni.</div>`;
+                }
+            },
+            handleAddArchive: async (e) => {
+                e.preventDefault();
+                const data = new FormData(e.target);
+                const type = data.get('type');
+                const name = data.get('name');
+                const parentId = data.get('parentId');
+                const id = type.toUpperCase().substring(0,4) + '-' + Date.now();
+                const item = { id, name, parentId };
+                if(type === 'binder') { item.code = name; delete item.name; item.status = 'Disponibile'; }
+                
+                let collectionName = type + 's';
+                if (type === 'shelf') collectionName = 'shelves';
+                await app.dbSet(collectionName, id, item);
+                await app.logAudit('ADD_ARCHIVE', id, `Added ${type}: ${name}`);
+                app.toast('Elemento aggiunto', 'success');
+                document.getElementById('modal-add-archive').classList.add('hidden');
+                e.target.reset();
+            },
+            updateParentSelect: () => {
+                const type = document.getElementById('archive-type-select').value;
+                const container = document.getElementById('parent-select-container');
+                const select = document.getElementById('archive-parent-select');
+                select.innerHTML = '';
+                if(type === 'archive') { container.classList.add('hidden'); return; }
+                container.classList.remove('hidden');
+                let options = [];
+                if(type === 'cupboard') options = app.db.archives;
+                else if (type === 'shelf') options = app.db.cupboards;
+                else if (type === 'binder') options = app.db.shelves;
+                options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.id;
+                    option.textContent = opt.name || opt.code;
+                    select.appendChild(option);
+                });
+            },
+            openBinder: (binderId) => {
+                const binder = app.db.binders.find(b => b.id === binderId);
+                if (!binder) return;
+                app.nav('batch-records');
+                document.getElementById('br-search').value = binder.code;
+                app.renderBatchRecords();
+                app.toast(`Filtro: Faldone ${binder.code}`, 'info');
+            },
+            openArchiveSelector: (brId) => {
+                document.getElementById('modal-archive-select').classList.remove('hidden');
+                app.tempBrId = brId;
+                const br = app.db.batchRecords.find(b => b.id === brId);
+                const isVal = br.type === 'validazione';
+                const msgBox = document.getElementById('archive-select-info');
+                msgBox.classList.remove('hidden', 'bg-purple-50', 'text-purple-800', 'bg-blue-50', 'text-blue-800');
+                msgBox.classList.add(isVal ? 'bg-purple-50' : 'bg-blue-50', isVal ? 'text-purple-800' : 'text-blue-800');
+                msgBox.textContent = isVal ? "Solo 'Archivio BR Validazione'" : "Escluso 'Archivio BR Validazione'";
+                const container = document.getElementById('archive-select-tree');
+                let html = '';
+                let hasOptions = false;
+                app.db.binders.forEach(b => {
+                    const shelf = app.db.shelves.find(s => s.id === b.parentId);
+                    const cup = app.db.cupboards.find(c => c.id === shelf.parentId);
+                    const arch = app.db.archives.find(a => a.id === cup.parentId);
+                    const isValArch = arch.name === 'Archivio BR Validazione';
+                    if (isVal && !isValArch) return;
+                    if (!isVal && isValArch) return;
+                    hasOptions = true;
+                    html += `<div class="p-2 border-b hover:bg-blue-50 cursor-pointer flex justify-between items-center" onclick="app.selectArchiveTarget('${b.id}', this)"><div><div class="font-bold text-sm text-slate-700"><i class="fas fa-folder mr-2 text-yellow-500"></i>${b.code}</div><div class="text-xs text-slate-500">${arch.name} > ...</div></div></div>`;
+                });
+                container.innerHTML = hasOptions ? html : `<div class="text-center py-4 text-gray-500">Nessun faldone idoneo.</div>`;
+            },
+            selectArchiveTarget: (binderId, el) => {
+                document.querySelectorAll('#archive-select-tree div').forEach(d => d.classList.remove('bg-blue-100'));
+                el.classList.add('bg-blue-100');
+                app.tempBinderId = binderId;
+                const btn = document.getElementById('btn-confirm-archive');
+                btn.disabled = false;
+                btn.onclick = async () => {
+                    const br = app.db.batchRecords.find(b => b.id === app.tempBrId);
+                    br.binderId = binderId;
+                    br.status = 'Archiviato';
+                    await app.dbSet('batchRecords', br.id, br);
+                    await app.logAudit('ARCHIVE_BR', br.id, `Moved to binder ${binderId}`);
+                    document.getElementById('modal-archive-select').classList.add('hidden');
+                    app.toast('Archiviazione Completata', 'success');
+                };
+            },
+            rejectLoan: async (loanId) => {
+                 const loan = app.db.loans.find(l => l.id === loanId);
+                 loan.status = 'REJECTED';
+                 await app.dbSet('loans', loan.id, loan);
+                 await app.logAudit('LOAN_REJECT', loan.brId, `Rejected by ${app.currentUser.id}`);
+                 app.toast('Richiesta rifiutata', 'info');
+            },
+            handleCreateUser: async (e) => {
+                e.preventDefault();
+                const data = new FormData(e.target);
+                const uid = data.get('uid').toUpperCase();
+                if(app.db.users.find(u => u.id === uid)) return app.toast('ID esistente', 'error');
+                const newUser = { id: uid, name: data.get('name'), role: data.get('role'), pass: data.get('pass'), status: 'Attivo' };
+                await app.dbSet('users', uid, newUser);
+                await app.logAudit('CREATE_USER', uid, `Created user ${newUser.role}`);
+                document.getElementById('modal-create-user').classList.add('hidden');
+                e.target.reset();
+                app.toast('Utente creato', 'success');
+            },
+            renderUsers: () => {
+                const tbody = document.getElementById('users-table-body');
+                tbody.innerHTML = app.db.users.map(u => {
+                     const isSelf = u.id === app.currentUser.id;
+                     const btnText = u.status === 'Attivo' ? 'Blocca' : 'Sblocca';
+                     const btnClass = u.status === 'Attivo' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+                     const actionBtn = isSelf ? '<span class="text-xs text-gray-400">Tu</span>' : `<button onclick="app.toggleUserStatus('${u.id}')" class="${btnClass} px-3 py-1 rounded text-xs font-bold">${btnText}</button>`;
+                     return `<tr class="hover:bg-slate-50"><td class="p-4 font-mono text-sm text-slate-600">${u.id}</td><td class="p-4 font-bold text-slate-700">${u.name}</td><td class="p-4"><span class="px-2 py-1 rounded bg-slate-100 text-xs">${u.role}</span></td><td class="p-4"><span class="${u.status === 'Attivo' ? 'text-green-600' : 'text-red-600'} font-bold text-xs">● ${u.status}</span></td><td class="p-4">${actionBtn}</td></tr>`;
+                }).join('');
+            },
+            toggleUserStatus: async (uid) => {
+                const user = app.db.users.find(u => u.id === uid);
+                const newStatus = user.status === 'Attivo' ? 'Bloccato' : 'Attivo';
+                user.status = newStatus;
+                await app.dbSet('users', uid, user);
+                await app.logAudit('USER_MOD', uid, `Status: ${newStatus}`);
+                app.toast('Stato utente aggiornato', 'success');
+            },
+            renderAudit: () => {
+                const tbody = document.getElementById('audit-table-body');
+                tbody.innerHTML = app.db.auditTrail.map(e => `<tr><td class="p-2 border-b text-slate-500">${new Date(e.ts).toLocaleString()}</td><td class="p-2 border-b font-bold">${e.user}</td><td class="p-2 border-b text-blue-700">${e.action}</td><td class="p-2 border-b">${e.target}</td><td class="p-2 border-b text-slate-600">${e.details}</td></tr>`).join('');
+            },
+            renderTime: () => { if(document.getElementById('system-time')) document.getElementById('system-time').textContent = new Date().toUTCString(); },
+            toast: (msg, type='info') => {
+                const div = document.createElement('div');
+                div.className = `toast ${type==='error'?'bg-red-600':(type==='success'?'bg-green-600':'bg-blue-600')} text-white px-4 py-3 rounded shadow-lg text-sm flex items-center gap-2`;
+                div.innerHTML = `<i class="fas fa-info-circle"></i> ${msg}`;
+                document.getElementById('toast-container').appendChild(div);
+                setTimeout(() => div.remove(), 3000);
+            },
+            modals: {
+                createBR: { show: () => document.getElementById('modal-create-br').classList.remove('hidden') },
+                createUser: { show: () => document.getElementById('modal-create-user').classList.remove('hidden') },
+                addArchive: { show: () => { app.updateParentSelect(); document.getElementById('modal-add-archive').classList.remove('hidden'); } }
+            }
+        };
+
+        // Start App
+        window.addEventListener('DOMContentLoaded', app.init);
+    </script>
+</body>
+</html>
