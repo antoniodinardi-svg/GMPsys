@@ -1142,7 +1142,9 @@
                     approvalPanel.classList.toggle('hidden', pendings.length === 0);
                     pendingList.innerHTML = pendings.map(l => {
                         const br = app.db.batchRecords.find(b => b.id === l.brId);
-                        return `<div class="bg-white p-3 rounded border border-yellow-300 flex justify-between items-center"><div><div class="font-bold text-sm">${br.wo}</div><div class="text-xs text-slate-500">Richiesto da: ${l.userId}</div></div><div class="flex gap-2"><button onclick="app.rejectLoan('${l.id}')" class="text-red-600 text-xs">Rifiuta</button><button onclick="app.approveLoan('${l.id}')" class="bg-green-600 text-white text-xs px-3 py-1 rounded">Approva</button></div></div>`;
+                        // Programmazione Difensiva aggiunta per evitare blocchi del render in caso di BR eliminato
+                        const wo = br ? br.wo : 'BR Sconosciuto/Eliminato';
+                        return `<div class="bg-white p-3 rounded border border-yellow-300 flex justify-between items-center"><div><div class="font-bold text-sm">${wo}</div><div class="text-xs text-slate-500">Richiesto da: ${l.userId}</div></div><div class="flex gap-2"><button onclick="app.rejectLoan('${l.id}')" class="text-red-600 text-xs">Rifiuta</button><button onclick="app.approveLoan('${l.id}')" class="bg-green-600 text-white text-xs px-3 py-1 rounded">Approva</button></div></div>`;
                     }).join('');
                 } else { approvalPanel.classList.add('hidden'); }
                 
@@ -1150,10 +1152,12 @@
                 tbody.innerHTML = '';
                 app.db.loans.filter(l => l.status === 'ACTIVE').forEach(l => {
                     const br = app.db.batchRecords.find(b => b.id === l.brId);
+                    // Programmazione Difensiva aggiunta
+                    const wo = br ? br.wo : 'BR Sconosciuto/Eliminato';
                     // Per restituire: Se sei l'utente che l'ha preso O se sei un Admin (override)
                     let canReturn = (l.userId === app.currentUser.id || app.currentUser.role === 'Amministratore');
                     let action = canReturn ? `<button onclick="app.returnLoan('${l.id}')" class="text-blue-600 hover:underline text-sm font-bold">Restituisci</button>` : `<span class="text-slate-400 italic text-xs">In uso da altri</span>`;
-                    tbody.innerHTML += `<tr><td class="p-3 font-bold text-slate-700">${br.wo}</td><td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-mono">${l.userId}</span></td><td class="p-3 text-xs">${new Date(l.outDate).toLocaleString()}</td><td class="p-3 text-xs">${l.approvedBy || '-'}</td><td class="p-3"><span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">Attivo</span></td><td class="p-3 text-right">${action}</td></tr>`;
+                    tbody.innerHTML += `<tr><td class="p-3 font-bold text-slate-700">${wo}</td><td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-xs font-mono">${l.userId}</span></td><td class="p-3 text-xs">${new Date(l.outDate).toLocaleString()}</td><td class="p-3 text-xs">${l.approvedBy || '-'}</td><td class="p-3"><span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">Attivo</span></td><td class="p-3 text-right">${action}</td></tr>`;
                 });
             },
             // ... rest of standard render functions (archive, audit, users) ...
